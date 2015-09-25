@@ -69,7 +69,11 @@ var (
 	ErrUnknownTag = TextErr{errors.New("unknown tag")}
 	// ErrInvalid is the error returned when variable is invalid
 	// (normally a nil pointer)
-	ErrInvalid = TextErr{errors.New("invalid value")}
+	ErrInvalid  = TextErr{errors.New("invalid value")}
+	ErrEmail    = TextErr{errors.New("invalid email")}
+	ErrDomainIP = TextErr{errors.New("invalid domain or ip")}
+	ErrIP       = TextErr{errors.New("invalid ip")}
+	ErrIPMask   = TextErr{errors.New("invalid ip mask")}
 )
 
 // ErrorMap is a map which contains all errors from validating a struct.
@@ -114,37 +118,35 @@ type Validator struct {
 
 // Helper validator so users can use the
 // functions directly from the package
-var defaultValidator = NewValidator()
+var Global = NewValidator()
+
+var buildinValidationFuncs map[string]ValidationFunc
+
+func init() {
+	buildinValidationFuncs = map[string]ValidationFunc{
+		"nonzero":    nonzero,
+		"len":        length,
+		"min":        min,
+		"max":        max,
+		"regexp":     regex,
+		"email":      email,
+		"domainipv4": domainipv4,
+		"ipv4":       ipv4,
+		"ipv4mask":   ipv4mask,
+	}
+}
 
 // NewValidator creates a new Validator
 func NewValidator() *Validator {
 	return &Validator{
-		tagName: "validate",
-		validationFuncs: map[string]ValidationFunc{
-			"nonzero": nonzero,
-			"len":     length,
-			"min":     min,
-			"max":     max,
-			"regexp":  regex,
-		},
+		tagName:         "validate",
+		validationFuncs: make(map[string]ValidationFunc),
 	}
-}
-
-// SetTag allows you to change the tag name used in structs
-func SetTag(tag string) {
-	defaultValidator.SetTag(tag)
 }
 
 // SetTag allows you to change the tag name used in structs
 func (mv *Validator) SetTag(tag string) {
 	mv.tagName = tag
-}
-
-// WithTag creates a new Validator with the new tag name. It is
-// useful to chain-call with Validate so we don't change the tag
-// name permanently: validator.WithTag("foo").Validate(t)
-func WithTag(tag string) *Validator {
-	return defaultValidator.WithTag(tag)
 }
 
 // WithTag creates a new Validator with the new tag name. It is
@@ -167,30 +169,18 @@ func (mv *Validator) copy() *Validator {
 // SetValidationFunc sets the function to be used for a given
 // validation constraint. Calling this function with nil vf
 // is the same as removing the constraint function from the list.
-func SetValidationFunc(name string, vf ValidationFunc) error {
-	return defaultValidator.SetValidationFunc(name, vf)
-}
-
-// SetValidationFunc sets the function to be used for a given
-// validation constraint. Calling this function with nil vf
-// is the same as removing the constraint function from the list.
 func (mv *Validator) SetValidationFunc(name string, vf ValidationFunc) error {
 	if name == "" {
 		return errors.New("name cannot be empty")
 	}
 	if vf == nil {
-		delete(mv.validationFuncs, name)
-		return nil
+		if _, found := buildinValidationFuncs[name]; !found {
+			delete(mv.validationFuncs, name)
+			return nil
+		}
 	}
 	mv.validationFuncs[name] = vf
 	return nil
-}
-
-// Validate validates the fields of a struct based
-// on 'validator' tags and returns errors found indexed
-// by the field name.
-func Validate(v interface{}) error {
-	return defaultValidator.Validate(v)
 }
 
 // Validate validates the fields of a struct based
@@ -264,12 +254,6 @@ func (mv *Validator) Validate(v interface{}) error {
 
 // Valid validates a value based on the provided
 // tags and returns errors found or nil.
-func Valid(val interface{}, tags string) error {
-	return defaultValidator.Valid(val, tags)
-}
-
-// Valid validates a value based on the provided
-// tags and returns errors found or nil.
 func (mv *Validator) Valid(val interface{}, tags string) error {
 	if tags == "-" {
 		return nil
@@ -332,9 +316,13 @@ func (mv *Validator) parseTags(t string) ([]tag, error) {
 		}
 		var found bool
 		if tg.Fn, found = mv.validationFuncs[tg.Name]; !found {
-			return []tag{}, ErrUnknownTag
+			if tg.Fn, found = buildinValidationFuncs[tg.Name]; !found {
+				return []tag{}, ErrUnknownTag
+			}
 		}
-		tags = append(tags, tg)
+		if tg.Fn != nil {
+			tags = append(tags, tg)
+		}
 
 	}
 	return tags, nil

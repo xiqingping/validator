@@ -22,6 +22,49 @@ import (
 	"strconv"
 )
 
+func domainipv4(v interface{}, param string) error {
+	st := reflect.ValueOf(v)
+	if st.Kind() != reflect.String {
+		return ErrDomainIP
+	}
+	if !rxDomain.MatchString(st.String()) && !rxIPV4.MatchString(st.String()) {
+		return ErrDomainIP
+	}
+	return nil
+}
+
+func ipv4(v interface{}, param string) error {
+	st := reflect.ValueOf(v)
+	if st.Kind() != reflect.String {
+		return ErrIP
+	}
+	if !rxIPV4.MatchString(st.String()) {
+		return ErrIP
+	}
+	return nil
+}
+
+func ipv4mask(v interface{}, param string) error {
+	st := reflect.ValueOf(v)
+	if st.Kind() != reflect.String {
+		return ErrIPMask
+	}
+	if !rxIPV4Mask.MatchString(st.String()) {
+		return ErrIPMask
+	}
+	return nil
+}
+
+// IsEmail check if the string is an email.
+func email(v interface{}, param string) error {
+	st := reflect.ValueOf(v)
+
+	if st.Kind() != reflect.String || !rxEmail.MatchString(st.String()) {
+		return ErrEmail
+	}
+	return nil
+}
+
 // nonzero tests whether a variable value non-zero
 // as defined by the golang spec.
 func nonzero(v interface{}, param string) error {
